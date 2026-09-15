@@ -1,0 +1,5 @@
+Vector similarity search ranks documents by how close their embedding vectors
+are to a query vector. Cosine similarity measures the angle between vectors and
+is popular for text embeddings. Dot product and Euclidean distance are common
+alternatives. For small demos, bag-of-words hashing plus cosine works offline
+without external embedding APIs.

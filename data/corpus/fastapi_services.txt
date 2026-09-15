@@ -1,0 +1,4 @@
+FastAPI is a Python web framework well suited for small ML/RAG services.
+Endpoints are defined with path operations. A POST /query route can accept a
+JSON body with a question field, run retrieval, call a generation provider,
+and return retrieved chunks plus the generated answer. Uvicorn serves the app.
