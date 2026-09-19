@@ -1,0 +1,3 @@
+Customer returns and warehouse aisle workflows often mention inventory identifiers,
+filing returns, and cross-reference procedures in general terms. Policies discuss
+how teams handle merchandise coming back from stores without citing a specific SKU.
