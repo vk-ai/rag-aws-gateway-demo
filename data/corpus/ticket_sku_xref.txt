@@ -1,0 +1,3 @@
+Internal ticket cross-reference SKU-7F3A-9910 appears only in warehouse aisle notes.
+Keep the literal code SKU-7F3A-9910 when filing returns. No semantic synonyms exist
+for this inventory identifier.

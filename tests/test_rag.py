@@ -83,3 +83,61 @@ def test_empty_store_still_answers():
     result = service.query("anything")
     assert "No relevant context" in result.answer
     assert result.chunks == []
+
+
+def test_rrf_fusion_prefers_shared_top_hits():
+    from app.vectorstore import reciprocal_rank_fusion
+
+    # Doc 0 ranks high in both channels → highest RRF
+    scores = reciprocal_rank_fusion([[0, 1, 2], [0, 2, 1]], k=60)
+    assert max(scores, key=scores.get) == 0
+
+
+def test_hybrid_helps_exact_sku_id():
+    """Exact inventory ID: BM25 / hybrid beat thematic dense distractor."""
+    store = NumpyVectorStore(HashingEmbedder(dim=256))
+    store.add(load_corpus(CORPUS))
+    query = "SKU-7F3A-9910 inventory identifier"
+
+    dense = store.search_dense(query, top_k=5)
+    bm25 = store.search_bm25(query, top_k=5)
+    hybrid = store.search(query, top_k=5)
+
+    assert bm25, "BM25 should retrieve something"
+    assert any("SKU-7F3A-9910" in h.chunk.text for h in bm25[:2])
+
+    # Dense-only often elevates the thematic returns-policy distractor
+    dense_top_ids = [h.chunk.doc_id for h in dense]
+    hybrid_top_ids = [h.chunk.doc_id for h in hybrid]
+    sku_hits = [h for h in hybrid if "SKU-7F3A-9910" in h.chunk.text]
+    assert sku_hits, f"hybrid missed SKU doc; dense={dense_top_ids} hybrid={hybrid_top_ids}"
+    sku = sku_hits[0]
+    assert sku.bm25_score > 0
+    assert sku.rrf_score == sku.score
+    assert "bm25" in sku.channel_ranks
+
+    # Hybrid must surface the SKU doc at least as high as dense-only
+    dense_sku_rank = next(
+        (i for i, h in enumerate(dense) if "SKU-7F3A-9910" in h.chunk.text),
+        99,
+    )
+    hybrid_sku_rank = next(
+        i for i, h in enumerate(hybrid) if "SKU-7F3A-9910" in h.chunk.text
+    )
+    assert hybrid_sku_rank <= dense_sku_rank
+
+
+def test_query_endpoint_returns_channel_scores():
+    settings = Settings(
+        rag_provider="mock",
+        rag_top_k=3,
+        rag_corpus_dir=str(CORPUS),
+    )
+    service = build_service(settings)
+    client = TestClient(create_app_with_service(service))
+    resp = client.post("/query", json={"question": "SKU-7F3A-9910"})
+    assert resp.status_code == 200
+    hit = resp.json()["retrieved"][0]
+    assert "dense_score" in hit and "bm25_score" in hit and "rrf_score" in hit
+    assert "channel_ranks" in hit
+    assert hit["score"] == hit["rrf_score"]

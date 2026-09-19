@@ -40,6 +40,10 @@ class ChunkOut(BaseModel):
     source: str
     text: str
     score: float
+    dense_score: float = 0.0
+    bm25_score: float = 0.0
+    rrf_score: float = 0.0
+    channel_ranks: dict[str, int] = Field(default_factory=dict)
 
 
 class QueryResponse(BaseModel):
@@ -47,6 +51,19 @@ class QueryResponse(BaseModel):
     answer: str
     provider: str
     retrieved: list[ChunkOut]
+
+
+def _chunk_out(h) -> ChunkOut:
+    return ChunkOut(
+        doc_id=h.chunk.doc_id,
+        source=h.chunk.source,
+        text=h.chunk.text,
+        score=h.score,
+        dense_score=h.dense_score,
+        bm25_score=h.bm25_score,
+        rrf_score=h.rrf_score,
+        channel_ranks=h.channel_ranks,
+    )
 
 
 @app.get("/health")
@@ -63,15 +80,7 @@ def query(body: QueryRequest) -> QueryResponse:
         question=result.question,
         answer=result.answer,
         provider=result.provider,
-        retrieved=[
-            ChunkOut(
-                doc_id=h.chunk.doc_id,
-                source=h.chunk.source,
-                text=h.chunk.text,
-                score=h.score,
-            )
-            for h in result.chunks
-        ],
+        retrieved=[_chunk_out(h) for h in result.chunks],
     )
 
 
@@ -86,15 +95,7 @@ def create_app_with_service(service: RagService) -> FastAPI:
             question=result.question,
             answer=result.answer,
             provider=result.provider,
-            retrieved=[
-                ChunkOut(
-                    doc_id=h.chunk.doc_id,
-                    source=h.chunk.source,
-                    text=h.chunk.text,
-                    score=h.score,
-                )
-                for h in result.chunks
-            ],
+            retrieved=[_chunk_out(h) for h in result.chunks],
         )
 
     return test_app

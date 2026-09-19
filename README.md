@@ -9,9 +9,12 @@ Minimal **retrieve-then-generate** RAG service for learning and OSS demos.
 ## What it does
 
 1. Loads a small local markdown/txt corpus (`data/corpus/`)
-2. Embeds chunks offline with a bag-of-words hashing embedder (numpy cosine)
-3. Retrieves top-k chunks for a question
+2. Retrieves with **hybrid** search: Okapi BM25 (keyword) + hashing-cosine (dense) fused by **Reciprocal Rank Fusion (RRF)**
+3. Returns per-hit `dense_score`, `bm25_score`, `rrf_score`, and `channel_ranks` in `retrieved`
 4. Generates an answer via a pluggable provider (`mock` by default)
+
+Hybrid retrieval stays fully offline (no vector DB, no live Bedrock invoke). Hashing
+embeddings alone can under-rank exact IDs/acronyms; BM25 + RRF is the teaching fix.
 
 No API keys or AWS credentials are required to run or test.
 
@@ -62,7 +65,8 @@ app/
   main.py          # FastAPI POST /query, GET /health
   rag.py           # retrieve-then-generate orchestration
   embeddings.py    # hashing embedder
-  vectorstore.py   # numpy cosine store + corpus loader
+  bm25.py          # Okapi BM25
+  vectorstore.py   # hybrid BM25 + cosine + RRF + corpus loader
   providers/       # mock | openai | bedrock
 data/corpus/       # fixture documents
 tests/             # pytest
