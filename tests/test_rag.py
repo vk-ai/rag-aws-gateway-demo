@@ -141,3 +141,60 @@ def test_query_endpoint_returns_channel_scores():
     assert "dense_score" in hit and "bm25_score" in hit and "rrf_score" in hit
     assert "channel_ranks" in hit
     assert hit["score"] == hit["rrf_score"]
+
+
+def test_grounding_score_lexical():
+    from app.citations import grounding_score
+
+    ctx = "Retrieval augmented generation retrieves documents then generates an answer."
+    good = "RAG retrieves documents then generates an answer from context."
+    bad = "The weather in Antarctica is unusually warm today."
+    assert grounding_score(good, ctx) > 0.4
+    assert grounding_score(bad, ctx) < 0.2
+    assert grounding_score("", ctx) == 0.0
+
+
+def test_citations_from_markers():
+    from app.citations import build_citations
+    from app.vectorstore import Chunk, RetrievedChunk
+
+    chunks = [
+        RetrievedChunk(
+            chunk=Chunk(doc_id="a", text="Alpha chunk about RAG retrieval.", source="a.md"),
+            score=0.9,
+        ),
+        RetrievedChunk(
+            chunk=Chunk(doc_id="b", text="Beta chunk about BM25 keywords.", source="b.md"),
+            score=0.8,
+        ),
+    ]
+    answer = "RAG uses retrieval [1] and keywords [2]."
+    cites = build_citations(answer, chunks, question="RAG retrieval")
+    assert len(cites) == 2
+    assert cites[0].chunk_id == "a" and cites[0].marker == 1
+    assert cites[1].chunk_id == "b" and cites[1].marker == 2
+    assert cites[0].quote
+
+
+def test_query_endpoint_citations_and_grounding():
+    settings = Settings(
+        rag_provider="mock",
+        rag_top_k=3,
+        rag_corpus_dir=str(CORPUS),
+    )
+    service = build_service(settings)
+    client = TestClient(create_app_with_service(service))
+    resp = client.post("/query", json={"question": "What is retrieval augmented generation?"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "citations" in data and isinstance(data["citations"], list)
+    assert len(data["citations"]) >= 1
+    cite = data["citations"][0]
+    assert "chunk_id" in cite and "quote" in cite and "marker" in cite
+    assert cite["marker"] >= 1
+    assert "grounding_score" in data
+    assert 0.0 <= data["grounding_score"] <= 1.0
+    # Mock provider emits [n] markers
+    assert "[1]" in data["answer"]
+    # Lexical overlap should be non-trivial for mock answers that echo context
+    assert data["grounding_score"] > 0.1
