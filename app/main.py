@@ -46,11 +46,22 @@ class ChunkOut(BaseModel):
     channel_ranks: dict[str, int] = Field(default_factory=dict)
 
 
+class CitationOut(BaseModel):
+    chunk_id: str
+    source: str
+    quote: str
+    marker: int
+    start: int
+    end: int
+
+
 class QueryResponse(BaseModel):
     question: str
     answer: str
     provider: str
     retrieved: list[ChunkOut]
+    citations: list[CitationOut]
+    grounding_score: float
 
 
 def _chunk_out(h) -> ChunkOut:
@@ -66,6 +77,28 @@ def _chunk_out(h) -> ChunkOut:
     )
 
 
+def _citation_out(c) -> CitationOut:
+    return CitationOut(
+        chunk_id=c.chunk_id,
+        source=c.source,
+        quote=c.quote,
+        marker=c.marker,
+        start=c.start,
+        end=c.end,
+    )
+
+
+def _to_response(result) -> QueryResponse:
+    return QueryResponse(
+        question=result.question,
+        answer=result.answer,
+        provider=result.provider,
+        retrieved=[_chunk_out(h) for h in result.chunks],
+        citations=[_citation_out(c) for c in result.citations],
+        grounding_score=result.grounding_score,
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -75,13 +108,7 @@ def health() -> dict[str, str]:
 def query(body: QueryRequest) -> QueryResponse:
     if _service is None:
         raise HTTPException(status_code=503, detail="Service not ready")
-    result = _service.query(body.question)
-    return QueryResponse(
-        question=result.question,
-        answer=result.answer,
-        provider=result.provider,
-        retrieved=[_chunk_out(h) for h in result.chunks],
-    )
+    return _to_response(_service.query(body.question))
 
 
 def create_app_with_service(service: RagService) -> FastAPI:
@@ -90,12 +117,6 @@ def create_app_with_service(service: RagService) -> FastAPI:
 
     @test_app.post("/query", response_model=QueryResponse)
     def _query(body: QueryRequest) -> Any:
-        result = service.query(body.question)
-        return QueryResponse(
-            question=result.question,
-            answer=result.answer,
-            provider=result.provider,
-            retrieved=[_chunk_out(h) for h in result.chunks],
-        )
+        return _to_response(service.query(body.question))
 
     return test_app
