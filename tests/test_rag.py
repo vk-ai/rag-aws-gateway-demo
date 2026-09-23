@@ -70,11 +70,78 @@ def test_bedrock_stub_without_creds():
         rag_corpus_dir=str(CORPUS),
         aws_access_key_id="",
         aws_secret_access_key="",
+        rag_bedrock_live=False,
     )
     provider = BedrockProvider(settings)
     answer = provider.generate("hi", ["ctx"])
     assert "bedrock-stub" in answer
     assert "[mock]" in answer
+
+
+def test_bedrock_stub_with_creds_but_live_disabled():
+    """Even with fake AWS keys, default RAG_BEDROCK_LIVE=false must stay stubbed."""
+    settings = Settings(
+        rag_provider="bedrock",
+        rag_corpus_dir=str(CORPUS),
+        aws_access_key_id="AKIA_FAKE_FOR_TEST",
+        aws_secret_access_key="fake_secret_for_offline_test",
+        aws_region="us-west-2",
+        bedrock_model_id="anthropic.claude-3-haiku-20240307-v1:0",
+        rag_bedrock_live=False,
+    )
+    provider = BedrockProvider(settings)
+    answer = provider.generate("hi", ["ctx"])
+    assert "bedrock-stub" in answer
+    assert "RAG_BEDROCK_LIVE=false" in answer
+    assert "[mock]" in answer
+    assert "bedrock-live" not in answer
+
+
+def test_bedrock_live_true_without_creds_falls_back():
+    settings = Settings(
+        rag_provider="bedrock",
+        rag_corpus_dir=str(CORPUS),
+        aws_access_key_id="",
+        aws_secret_access_key="",
+        rag_bedrock_live=True,
+    )
+    provider = BedrockProvider(settings)
+    answer = provider.generate("hi", ["ctx"])
+    assert "bedrock-stub" in answer
+    assert "credentials" in answer.lower()
+    assert "[mock]" in answer
+    assert "bedrock-live" not in answer
+
+
+def test_bedrock_live_true_without_boto3_falls_back(monkeypatch):
+    """Simulate missing boto3 even if somehow imported elsewhere."""
+    import builtins
+    import sys
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "boto3" or name.startswith("boto3."):
+            raise ImportError("boto3 deliberately unavailable in offline test")
+        return real_import(name, *args, **kwargs)
+
+    # Ensure a real boto3 is not already cached as usable for this path
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    sys.modules.pop("boto3", None)
+
+    settings = Settings(
+        rag_provider="bedrock",
+        rag_corpus_dir=str(CORPUS),
+        aws_access_key_id="AKIA_FAKE_FOR_TEST",
+        aws_secret_access_key="fake_secret_for_offline_test",
+        rag_bedrock_live=True,
+    )
+    provider = BedrockProvider(settings)
+    answer = provider.generate("hi", ["ctx"])
+    assert "bedrock-stub" in answer
+    assert "boto3" in answer.lower()
+    assert "[mock]" in answer
+    assert "bedrock-live" not in answer
 
 
 def test_empty_store_still_answers():

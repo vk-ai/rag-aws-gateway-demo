@@ -47,7 +47,27 @@ Set `RAG_PROVIDER` (see `.env.example`):
 |-----------|----------|
 | `mock`    | Default. Deterministic offline answer from retrieved context. |
 | `openai`  | OpenAI-compatible chat completions if `OPENAI_API_KEY` is set; otherwise mock fallback. |
-| `bedrock` | Stub that mocks unless AWS keys are present; still no live invoke in this learning demo. |
+| `bedrock` | **Stub by default** (`[bedrock-stub]`). Never calls AWS unless you explicitly opt in (below). |
+
+### Optional live Bedrock (opt-in)
+
+The default `bedrock` path is offline and clearly labeled `[bedrock-stub]` — even if
+`AWS_*` credentials exist in the environment. That keeps `pytest` and local demos
+credential-free.
+
+To attempt a real Bedrock `InvokeModel` (Anthropic Messages-style body, e.g. Claude Haiku):
+
+1. `RAG_PROVIDER=bedrock`
+2. Set `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `BEDROCK_MODEL_ID`
+3. Set **`RAG_BEDROCK_LIVE=true`** (default is `false`)
+4. Install the optional SDK: `pip install boto3` (or `pip install '.[bedrock]'`)
+
+Successful live answers are prefixed `[bedrock-live]`. If `boto3` is missing, creds are
+incomplete, or invoke fails, the provider falls back to `[bedrock-stub]` + mock — it does
+**not** crash the API.
+
+This optional path is for learning how a gateway-shaped RAG service *could* call Bedrock.
+It is **not** a production Bedrock integration and makes no claims about any employer's systems.
 
 ## Tests
 
@@ -55,7 +75,7 @@ Set `RAG_PROVIDER` (see `.env.example`):
 pytest -q
 ```
 
-Runs fully offline (no network, no AWS).
+Runs fully offline (no network, no AWS). Live Bedrock is never exercised in CI.
 
 ## CI
 
@@ -73,7 +93,7 @@ app/
   embeddings.py    # hashing embedder
   bm25.py          # Okapi BM25
   vectorstore.py   # hybrid BM25 + cosine + RRF + corpus loader
-  providers/       # mock | openai | bedrock
+  providers/       # mock | openai | bedrock (stub + optional live)
 data/corpus/       # fixture documents
 tests/             # pytest
 .github/workflows/ # CI

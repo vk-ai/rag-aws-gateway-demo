@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     bedrock_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
+    # Explicit opt-in for live Bedrock InvokeModel. Default false keeps the
+    # demo fully offline even when AWS_* creds are present in the environment.
+    rag_bedrock_live: bool = False
 
 
 @lru_cache
