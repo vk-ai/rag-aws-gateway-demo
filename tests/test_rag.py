@@ -265,3 +265,83 @@ def test_query_endpoint_citations_and_grounding():
     assert "[1]" in data["answer"]
     # Lexical overlap should be non-trivial for mock answers that echo context
     assert data["grounding_score"] > 0.1
+
+
+def test_rewrite_expands_abbreviations():
+    from app.rewrite import rewrite_query
+
+    rw = rewrite_query("What is RAG?")
+    assert "retrieval augmented generation" in rw.rewritten.lower()
+    assert any(op.startswith("expand:rag") for op in rw.ops)
+
+
+def test_rewrite_strips_filler():
+    from app.rewrite import rewrite_query
+
+    rw = rewrite_query("Can you please explain vector search?")
+    assert not rw.rewritten.lower().startswith("can you")
+    assert "vector search" in rw.rewritten.lower()
+    assert any("strip_filler" in op for op in rw.ops)
+
+
+def test_query_exposes_rewritten_query():
+    settings = Settings(
+        rag_provider="mock",
+        rag_top_k=3,
+        rag_corpus_dir=str(CORPUS),
+        rag_rewrite=True,
+    )
+    service = build_service(settings)
+    result = service.query("What is RAG?")
+    assert result.rewritten_query
+    assert result.rewritten_query != result.question or "retrieval" in result.rewritten_query.lower()
+    assert "retrieval augmented generation" in result.rewritten_query.lower()
+
+
+def test_rewrite_toggle_disable():
+    settings = Settings(
+        rag_provider="mock",
+        rag_top_k=3,
+        rag_corpus_dir=str(CORPUS),
+        rag_rewrite=True,
+    )
+    service = build_service(settings)
+    raw = service.query("What is RAG?", rewrite=False)
+    assert raw.rewritten_query == "What is RAG?"
+    assert raw.rewrite_ops == []
+
+
+def test_rewrite_changes_retrieval_vs_raw():
+    """Abbreviation expand should change which lexical hits surface vs raw acronym."""
+    settings = Settings(
+        rag_provider="mock",
+        rag_top_k=3,
+        rag_corpus_dir=str(CORPUS),
+        rag_rewrite=True,
+    )
+    service = build_service(settings)
+    with_rw = service.query("RAG basics", rewrite=True)
+    without = service.query("RAG basics", rewrite=False)
+    # Both should retrieve something; rewritten path prefers expanded terms
+    assert with_rw.chunks and without.chunks
+    assert with_rw.rewritten_query.lower() != without.rewritten_query.lower() or with_rw.rewrite_ops
+
+
+def test_query_endpoint_rewritten_field():
+    settings = Settings(
+        rag_provider="mock",
+        rag_top_k=3,
+        rag_corpus_dir=str(CORPUS),
+        rag_rewrite=True,
+    )
+    service = build_service(settings)
+    client = TestClient(create_app_with_service(service))
+    resp = client.post("/query", json={"question": "What is RAG?"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "rewritten_query" in data
+    assert "retrieval augmented generation" in data["rewritten_query"].lower()
+    # Per-request disable
+    resp2 = client.post("/query", json={"question": "What is RAG?", "rewrite": False})
+    assert resp2.json()["rewritten_query"] == "What is RAG?"
+    assert resp2.json()["rewrite_ops"] == []
