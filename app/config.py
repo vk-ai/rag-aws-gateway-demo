@@ -7,6 +7,8 @@ class Settings(BaseSettings):
 
     rag_provider: str = "mock"
     rag_top_k: int = 3
+    # Deterministic mock query rewrite before retrieve (set false to disable)
+    rag_rewrite: bool = True
     rag_corpus_dir: str = "data/corpus"
 
     openai_api_key: str = ""
