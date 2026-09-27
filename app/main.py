@@ -33,6 +33,10 @@ app = FastAPI(
 
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=1, examples=["What is RAG?"])
+    rewrite: bool | None = Field(
+        default=None,
+        description="Override server RAG_REWRITE toggle for this request",
+    )
 
 
 class ChunkOut(BaseModel):
@@ -62,6 +66,8 @@ class QueryResponse(BaseModel):
     retrieved: list[ChunkOut]
     citations: list[CitationOut]
     grounding_score: float
+    rewritten_query: str = ""
+    rewrite_ops: list[str] = Field(default_factory=list)
 
 
 def _chunk_out(h) -> ChunkOut:
@@ -96,6 +102,8 @@ def _to_response(result) -> QueryResponse:
         retrieved=[_chunk_out(h) for h in result.chunks],
         citations=[_citation_out(c) for c in result.citations],
         grounding_score=result.grounding_score,
+        rewritten_query=getattr(result, "rewritten_query", "") or result.question,
+        rewrite_ops=list(getattr(result, "rewrite_ops", []) or []),
     )
 
 
@@ -108,7 +116,7 @@ def health() -> dict[str, str]:
 def query(body: QueryRequest) -> QueryResponse:
     if _service is None:
         raise HTTPException(status_code=503, detail="Service not ready")
-    return _to_response(_service.query(body.question))
+    return _to_response(_service.query(body.question, rewrite=body.rewrite))
 
 
 def create_app_with_service(service: RagService) -> FastAPI:
@@ -117,6 +125,6 @@ def create_app_with_service(service: RagService) -> FastAPI:
 
     @test_app.post("/query", response_model=QueryResponse)
     def _query(body: QueryRequest) -> Any:
-        return _to_response(service.query(body.question))
+        return _to_response(service.query(body.question, rewrite=body.rewrite))
 
     return test_app

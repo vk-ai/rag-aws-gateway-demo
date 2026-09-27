@@ -13,6 +13,7 @@ Minimal **retrieve-then-generate** RAG service for learning and OSS demos.
 3. Returns per-hit `dense_score`, `bm25_score`, `rrf_score`, and `channel_ranks` in `retrieved`
 4. Generates an answer via a pluggable provider (`mock` by default) with `[n]` citation markers
 5. Returns `citations[]` (chunk_id + quote span + marker) and a lexical `grounding_score` (0–1)
+6. Optional **mock query rewrite** (expand abbreviations / strip filler) before retrieve; response includes `rewritten_query` (+ `rewrite_ops`); disable via `RAG_REWRITE=false` or `{"rewrite": false}`
 
 Hybrid retrieval stays fully offline (no vector DB, no live Bedrock invoke). Hashing
 embeddings alone can under-rank exact IDs/acronyms; BM25 + RRF is the teaching fix.
@@ -22,6 +23,34 @@ signal with the same *shape* as industry “check grounding” APIs. It is **not
 faithfulness, not NLI entailment, and not Google Check Grounding.
 
 No API keys or AWS credentials are required to run or test.
+
+
+## Mock query rewrite
+
+Hybrid RRF cannot fix a bad query. Before retrieve, a deterministic rewriter:
+
+- strips filler ("can you please…", "tell me…")
+- expands abbreviations (`RAG` → `retrieval augmented generation`, `SKU`, `API`, …)
+- exposes `rewritten_query` and `rewrite_ops[]` on the `/query` response
+
+```bash
+# Default: rewrite on
+curl -s -X POST http://127.0.0.1:8000/query \
+  -H 'content-type: application/json' \
+  -d '{"question":"What is RAG?"}' | python -m json.tool
+
+# Per-request disable
+curl -s -X POST http://127.0.0.1:8000/query \
+  -H 'content-type: application/json' \
+  -d '{"question":"What is RAG?","rewrite":false}' | python -m json.tool
+```
+
+Env toggle: `RAG_REWRITE=false` (see `.env.example`).
+
+> **Honesty:** Rule/heuristic mock rewriter — **not** production HyDE, not live LLM
+> rewrite cost, not employer search stack. Community signal: r/Rag query rewriting /
+> pronoun+acronym threads and hybrid-RAG READMEs that list rewrite after hybrid+rerank.
+
 
 ## Quick start
 
