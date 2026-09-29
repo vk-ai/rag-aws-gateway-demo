@@ -1,0 +1,14 @@
+{
+  "_about": "CI floors for python -m evals.retrieval_eval --check and tests/test_retrieval_eval.py. Set a little below the current numbers so real regressions fail but tiny re-labels don't. 'no_worse_than' rows are [better_mode, baseline_mode, metric]. hybrid >= bm25 is deliberately NOT gated: on this toy set BM25 alone wins (see README).",
+  "min": {
+    "dense": {"hit@3": 0.85, "recall@3": 0.80, "mrr": 0.75, "ndcg@5": 0.70},
+    "bm25": {"hit@3": 0.90, "recall@3": 0.85, "mrr": 0.85, "ndcg@5": 0.85},
+    "hybrid": {"hit@3": 0.85, "recall@3": 0.85, "mrr": 0.78, "ndcg@5": 0.78},
+    "hybrid+rewrite": {"hit@3": 0.90, "recall@3": 0.85, "mrr": 0.80, "ndcg@5": 0.80}
+  },
+  "no_worse_than": [
+    ["hybrid", "dense", "recall@3"],
+    ["hybrid", "dense", "mrr"],
+    ["hybrid+rewrite", "hybrid", "mrr"]
+  ]
+}
