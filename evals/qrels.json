@@ -1,0 +1,242 @@
+{
+  "_about": "Hand-labelled synthetic qrels over evals/corpus/ (OSS/learning demo). relevant maps chunk_id -> graded relevance (2 = answers the question, 1 = partially relevant). Queries with no relevant chunks are unanswerable probes, reported but excluded from metric means.",
+  "corpus_dir": "evals/corpus",
+  "queries": [
+    {
+      "id": "rrf_how",
+      "query": "How does RRF work?",
+      "relevant": {
+        "retrieval_methods#0": 2,
+        "retrieval_methods#3": 1
+      },
+      "tags": ["acronym", "rewrite-helps"]
+    },
+    {
+      "id": "bm25_rank",
+      "query": "How does BM25 rank documents?",
+      "relevant": {
+        "retrieval_methods#1": 2
+      },
+      "tags": ["acronym", "rewrite-hurts"]
+    },
+    {
+      "id": "bm25_k1",
+      "query": "What does the k1 parameter do in BM25?",
+      "relevant": {
+        "retrieval_methods#1": 2
+      },
+      "tags": ["identifier"]
+    },
+    {
+      "id": "dense_miss_ids",
+      "query": "Why can vector search miss exact part numbers?",
+      "relevant": {
+        "retrieval_methods#2": 2,
+        "retrieval_methods#3": 1
+      },
+      "tags": ["paraphrase"]
+    },
+    {
+      "id": "hybrid_what",
+      "query": "What is hybrid search?",
+      "relevant": {
+        "retrieval_methods#3": 2,
+        "retrieval_methods#0": 1
+      },
+      "tags": []
+    },
+    {
+      "id": "hit_rate",
+      "query": "What does hit rate at k measure?",
+      "relevant": {
+        "eval_metrics#0": 2
+      },
+      "tags": []
+    },
+    {
+      "id": "recall_two",
+      "query": "Did the retriever find both supporting passages?",
+      "relevant": {
+        "eval_metrics#1": 2
+      },
+      "tags": ["paraphrase"]
+    },
+    {
+      "id": "mrr_pos2",
+      "query": "How is a relevant chunk at position two scored by reciprocal rank?",
+      "relevant": {
+        "eval_metrics#2": 2
+      },
+      "tags": []
+    },
+    {
+      "id": "ndcg_graded",
+      "query": "What graded relevance labels does nDCG use?",
+      "relevant": {
+        "eval_metrics#3": 2
+      },
+      "tags": []
+    },
+    {
+      "id": "rewrite_filler",
+      "query": "Can you please tell me how query rewriting cleans up questions?",
+      "relevant": {
+        "query_rewriting#0": 2
+      },
+      "tags": ["filler"]
+    },
+    {
+      "id": "llm_latency",
+      "query": "Why would a question about LLM latency match a large language model passage?",
+      "relevant": {
+        "query_rewriting#1": 2
+      },
+      "tags": ["acronym"]
+    },
+    {
+      "id": "rewrite_hurt",
+      "query": "When can rewriting hurt keyword search?",
+      "relevant": {
+        "query_rewriting#2": 2
+      },
+      "tags": []
+    },
+    {
+      "id": "gw_429",
+      "query": "What happens when a provider returns 429?",
+      "relevant": {
+        "gateway_ops#1": 2
+      },
+      "tags": ["identifier"]
+    },
+    {
+      "id": "gw_timeout",
+      "query": "What should happen when an upstream call takes too long?",
+      "relevant": {
+        "gateway_ops#2": 2
+      },
+      "tags": ["paraphrase"]
+    },
+    {
+      "id": "gw_llm",
+      "query": "What does an LLM gateway do?",
+      "relevant": {
+        "gateway_ops#0": 2
+      },
+      "tags": ["acronym", "rewrite-helps"]
+    },
+    {
+      "id": "gw_cache",
+      "query": "How does the gateway avoid calling the provider twice for the same prompt?",
+      "relevant": {
+        "gateway_ops#3": 2
+      },
+      "tags": ["paraphrase"]
+    },
+    {
+      "id": "drill_battery",
+      "query": "Which part is the replacement battery for the cordless drill?",
+      "relevant": {
+        "returns_desk#3": 2
+      },
+      "tags": ["distractor"]
+    },
+    {
+      "id": "bare_part_id",
+      "query": "PX-4410-QZ",
+      "relevant": {
+        "returns_desk#3": 2
+      },
+      "tags": ["identifier", "distractor"]
+    },
+    {
+      "id": "sku_part_id",
+      "query": "Tell me about SKU PX-4410-QZ",
+      "relevant": {
+        "returns_desk#3": 2
+      },
+      "tags": ["identifier", "distractor", "filler"]
+    },
+    {
+      "id": "bin_code",
+      "query": "What is in bin WH-22-B?",
+      "relevant": {
+        "returns_desk#2": 2
+      },
+      "tags": ["identifier", "distractor"]
+    },
+    {
+      "id": "opened_laptop",
+      "query": "Can I bring back an opened laptop?",
+      "relevant": {
+        "returns_desk#0": 2
+      },
+      "tags": ["paraphrase"]
+    },
+    {
+      "id": "store_credit",
+      "query": "How much store credit do I get without a receipt?",
+      "relevant": {
+        "returns_desk#1": 2,
+        "support_faq#2": 1
+      },
+      "tags": []
+    },
+    {
+      "id": "faq_refund",
+      "query": "What does the FAQ say about refund timing?",
+      "relevant": {
+        "support_faq#0": 2,
+        "support_faq#1": 2
+      },
+      "tags": ["acronym", "rewrite-helps"]
+    },
+    {
+      "id": "gift_return",
+      "query": "Who gets the credit when a gift is returned?",
+      "relevant": {
+        "support_faq#2": 2
+      },
+      "tags": []
+    },
+    {
+      "id": "iam_invoke",
+      "query": "Which IAM permission is needed to invoke Bedrock models?",
+      "relevant": {
+        "aws_notes#1": 2,
+        "aws_notes#0": 1
+      },
+      "tags": ["acronym"]
+    },
+    {
+      "id": "bedrock_api",
+      "query": "Which API exposes Bedrock foundation models?",
+      "relevant": {
+        "aws_notes#0": 2
+      },
+      "tags": ["acronym", "rewrite-helps"]
+    },
+    {
+      "id": "s3_raw",
+      "query": "Where are raw corpus documents stored before ingest?",
+      "relevant": {
+        "aws_notes#2": 2
+      },
+      "tags": []
+    },
+    {
+      "id": "cw_alarms",
+      "query": "Which alarms warn operators about slow answers?",
+      "relevant": {
+        "aws_notes#3": 2
+      },
+      "tags": []
+    },
+    {
+      "id": "probe_unanswerable",
+      "query": "What is the capital of Australia?",
+      "relevant": {},
+      "tags": ["unanswerable"]
+    }
+  ]
+}
