@@ -37,6 +37,10 @@ class QueryRequest(BaseModel):
         default=None,
         description="Override server RAG_REWRITE toggle for this request",
     )
+    abstain: bool | None = Field(
+        default=None,
+        description="Override server RAG_ABSTAIN (insufficient-evidence gate) for this request",
+    )
 
 
 class ChunkOut(BaseModel):
@@ -68,6 +72,13 @@ class QueryResponse(BaseModel):
     grounding_score: float
     rewritten_query: str = ""
     rewrite_ops: list[str] = Field(default_factory=list)
+    status: str = Field(
+        default="answered",
+        description='"answered" or "insufficient_evidence" (generation skipped)',
+    )
+    abstained: bool = False
+    evidence_score: float = 0.0
+    evidence_threshold: float = 0.0
 
 
 def _chunk_out(h) -> ChunkOut:
@@ -104,6 +115,10 @@ def _to_response(result) -> QueryResponse:
         grounding_score=result.grounding_score,
         rewritten_query=getattr(result, "rewritten_query", "") or result.question,
         rewrite_ops=list(getattr(result, "rewrite_ops", []) or []),
+        status=getattr(result, "status", "answered"),
+        abstained=bool(getattr(result, "abstained", False)),
+        evidence_score=float(getattr(result, "evidence_score", 0.0)),
+        evidence_threshold=float(getattr(result, "evidence_threshold", 0.0)),
     )
 
 
@@ -116,7 +131,7 @@ def health() -> dict[str, str]:
 def query(body: QueryRequest) -> QueryResponse:
     if _service is None:
         raise HTTPException(status_code=503, detail="Service not ready")
-    return _to_response(_service.query(body.question, rewrite=body.rewrite))
+    return _to_response(_service.query(body.question, rewrite=body.rewrite, abstain=body.abstain))
 
 
 def create_app_with_service(service: RagService) -> FastAPI:
@@ -125,6 +140,6 @@ def create_app_with_service(service: RagService) -> FastAPI:
 
     @test_app.post("/query", response_model=QueryResponse)
     def _query(body: QueryRequest) -> Any:
-        return _to_response(service.query(body.question, rewrite=body.rewrite))
+        return _to_response(service.query(body.question, rewrite=body.rewrite, abstain=body.abstain))
 
     return test_app

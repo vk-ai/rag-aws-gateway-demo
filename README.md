@@ -13,7 +13,8 @@ Minimal **retrieve-then-generate** RAG service for learning and OSS demos.
 3. Returns per-hit `dense_score`, `bm25_score`, `rrf_score`, and `channel_ranks` in `retrieved`
 4. Generates an answer via a pluggable provider (`mock` by default) with `[n]` citation markers
 5. Returns `citations[]` (chunk_id + quote span + marker) and a lexical `grounding_score` (0–1)
-6. Optional **mock query rewrite** (expand abbreviations / strip filler) before retrieve; response includes `rewritten_query` (+ `rewrite_ops`); disable via `RAG_REWRITE=false` or `{"rewrite": false}`
+6. **Abstains** with `status: "insufficient_evidence"` (no generation) when retrieval evidence is too weak
+7. Optional **mock query rewrite** (expand abbreviations / strip filler) before retrieve; response includes `rewritten_query` (+ `rewrite_ops`); disable via `RAG_REWRITE=false` or `{"rewrite": false}`
 
 Hybrid retrieval stays fully offline (no vector DB, no live Bedrock invoke). Hashing
 embeddings alone can under-rank exact IDs/acronyms; BM25 + RRF is the teaching fix.
@@ -66,9 +67,10 @@ small **hand-labelled synthetic** eval set and a stdlib harness that scores four
 
 - `evals/corpus/`: 30 synthetic chunks (retrieval notes, gateway ops, a returns desk with
   near-duplicate part numbers and bin codes as distractors). This is separate from `data/corpus/`.
-- `evals/qrels.json`: 29 queries → `{chunk_id: grade}` (2 = answers, 1 = partial), tagged
-  `identifier` / `acronym` / `paraphrase` / `distractor` / …. It includes 1 unanswerable probe,
-  which is excluded from the means.
+- `evals/qrels.json`: 40 queries → `{chunk_id: grade}` (2 = answers, 1 = partial), tagged
+  `identifier` / `acronym` / `paraphrase` / `distractor` / …. It includes 12 unanswerable probes
+  (`off-topic` and `near-miss`), which are excluded from the means and calibrate the
+  abstention gate below.
 - `evals/retrieval_floors.json`: per-mode minimums plus relative gates
   (`hybrid ≥ dense` on recall@3 and MRR; `hybrid+rewrite ≥ hybrid` on MRR).
 
@@ -100,6 +102,56 @@ Current numbers (28 answerable queries, MRR over top-10):
 > before touching rerank or generation"), not a benchmark. This is not RAGAS, not BEIR, and has no LLM judge.
 > The motivation is the community thread [r/Rag: "Hybrid search and reranking made my RAG worse"](https://www.reddit.com/r/Rag/comments/1v7g3oe/hybrid_search_and_reranking_made_my_rag_worse/)
 > and [The Neural Base on retriever vs reranker evaluation](https://theneuralbase.com/ragas/learn/intermediate/retriever-vs-reranker-evaluation/).
+
+## Abstention gate: `insufficient_evidence`
+
+Saying "I don't know" is cheaper than a confident answer built on weak context. Before
+generation, `/query` computes an **evidence score** in [0, 1]: the best retrieved chunk's BM25
+score divided by the maximum BM25 score that query could reach on this corpus. Roughly, it is
+the share of the query's IDF-weighted words that the best hit covers. If the score is below
+`RAG_MIN_EVIDENCE`, the provider is **not called** and the response says so:
+
+```json
+{"status": "insufficient_evidence", "abstained": true, "evidence_score": 0.0277,
+ "evidence_threshold": 0.087, "citations": [], "grounding_score": 0.0,
+ "answer": "I don't have enough evidence in the indexed documents to answer that. ..."}
+```
+
+Answered responses carry `status: "answered"`, `abstained: false` and their `evidence_score`.
+You can turn the gate off with `RAG_ABSTAIN=false`, or per request with `{"abstain": false}`.
+
+**Calibrated with the round-4 retrieval eval.** The 28 answerable qrels queries and 12
+unanswerable probes are scored with the same signal. The threshold is the one with the fewest
+false answers inside a 5% false-refusal budget:
+
+```bash
+python -m evals.retrieval_eval --calibrate     # prints the table below
+python -m evals.retrieval_eval --check         # CI: also caps abstention error rates
+pytest tests/test_abstain.py -q
+```
+
+| threshold | false-answer rate | false-refusal rate |
+|---|---:|---:|
+| calibrated / shipped 0.087 | 0.167 (2/12) | 0.036 (1/28) |
+
+**What it teaches:**
+- RRF scores are rank-based and look confident even for nonsense, and the toy hashing-cosine
+  channel collides: "What is the capital of Australia?" gets a cosine of 0.52. Neither can gate.
+  The normalized BM25 score is bounded and IDF-aware, so it can.
+- The 2 false answers are both `near-miss` probes ("warranty period for the cordless drill",
+  "Kubernetes version"). Their words *are* in the corpus but the answer is not. A lexical gate
+  cannot catch these; that needs a sufficiency judge (NLI or LLM). The eval lists them instead
+  of hiding them. The 1 false refusal is a paraphrase ("bring back an opened laptop").
+- A test pins the shipped default to the calibration output, so re-labelling the eval set forces
+  a deliberate threshold update. The threshold is calibrated on `evals/corpus`; on the small
+  `data/corpus` fixture it transfers only roughly (for example "capital of Australia" scores 0.09
+  there and is answered), so recalibrate on your own corpus.
+
+> **Honesty:** a lexical teaching gate. It is not NLI or RAGAS context sufficiency, and has no LLM
+> judge. Motivation: [unrag docs: topK, thresholds and "no good match"](https://unrag.dev/docs/rag/04-retrieval/01-topk-thresholds-and-no-good-match),
+> [QASkills 2026 RAG testing guide](https://qaskills.sh/blog/rag-evaluation-metrics-complete-2026)
+> (abstention as a machine-readable status; measure under- and over-abstention), and
+> [tianpan.co "RAG's Dirty Secret"](https://tianpan.co/blog/2026/04/10/rag-context-sufficiency-problem).
 
 ## Quick start
 
@@ -166,7 +218,8 @@ with the `workflow` scope to push that path).
 ```
 app/
   main.py          # FastAPI POST /query, GET /health
-  rag.py           # retrieve-then-generate orchestration
+  rag.py           # retrieve-then-generate orchestration (+ abstention gate)
+  abstain.py       # evidence score + threshold calibration
   citations.py     # citations[] + lexical grounding_score
   embeddings.py    # hashing embedder
   bm25.py          # Okapi BM25

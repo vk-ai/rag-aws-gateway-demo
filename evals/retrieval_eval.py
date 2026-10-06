@@ -12,6 +12,7 @@ Run::
     python -m evals.retrieval_eval            # markdown table
     python -m evals.retrieval_eval --json     # machine-readable
     python -m evals.retrieval_eval --check    # exit 1 if any floor is violated
+    python -m evals.retrieval_eval --calibrate  # abstention threshold from the probes
 
 OSS/learning only: toy corpus + hand labels. The numbers teach the *method*
 (measure retrieval before tuning rerank/generation); they are not a benchmark,
@@ -28,6 +29,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
 
+from app.abstain import (
+    DEFAULT_MIN_EVIDENCE,
+    Calibration,
+    calibrate_threshold,
+    evidence_score,
+    gate_rates,
+)
 from app.embeddings import HashingEmbedder
 from app.rewrite import rewrite_query
 from app.vectorstore import NumpyVectorStore, load_corpus
@@ -275,23 +283,141 @@ def check_floors(report: EvalReport, floors: Mapping | None = None) -> list[str]
     return violations
 
 
+# ---------------------------------------------------------------------------
+# Abstention gate calibration ("insufficient evidence")
+# ---------------------------------------------------------------------------
+
+ABSTAIN_TOP_K = 3  # mirrors Settings.rag_top_k default used by /query
+
+
+@dataclass
+class AbstentionReport:
+    scores: dict[str, float]  # query id -> evidence score
+    answerable: dict[str, bool]
+    calibration: Calibration
+    shipped_threshold: float
+    shipped_false_answer_rate: float
+    shipped_false_refusal_rate: float
+    false_answers: list[str]  # unanswerable ids that pass the shipped threshold
+    false_refusals: list[str]  # answerable ids refused at the shipped threshold
+
+    def to_dict(self) -> dict:
+        return {
+            "calibrated": self.calibration.to_dict(),
+            "shipped_threshold": self.shipped_threshold,
+            "shipped_false_answer_rate": round(self.shipped_false_answer_rate, 4),
+            "shipped_false_refusal_rate": round(self.shipped_false_refusal_rate, 4),
+            "false_answers": self.false_answers,
+            "false_refusals": self.false_refusals,
+            "scores": {k: round(v, 4) for k, v in self.scores.items()},
+        }
+
+
+def abstention_eval(
+    qrels: Qrels | None = None,
+    *,
+    store: NumpyVectorStore | None = None,
+    rewrite: bool = True,
+    top_k: int = ABSTAIN_TOP_K,
+    max_false_refusal: float = 0.05,
+    threshold: float = DEFAULT_MIN_EVIDENCE,
+) -> AbstentionReport:
+    """Score every qrels query with the same evidence signal ``/query`` uses.
+
+    Answerable queries should clear the gate; unanswerable probes should not.
+    Returns the calibrated threshold plus the error rates of the *shipped*
+    threshold (``app.abstain.DEFAULT_MIN_EVIDENCE``).
+    """
+    qrels = qrels or load_qrels()
+    store = store or build_store(qrels.corpus_dir)
+    scores: dict[str, float] = {}
+    answerable: dict[str, bool] = {}
+    for q in qrels.queries:
+        rq = rewrite_query(q.query).rewritten if rewrite else q.query
+        hits = store.search(rq, top_k=top_k)
+        scores[q.id] = evidence_score(store._bm25, rq, (h.bm25_score for h in hits))
+        answerable[q.id] = q.answerable
+    pos = [scores[i] for i, a in answerable.items() if a]
+    neg = [scores[i] for i, a in answerable.items() if not a]
+    cal = calibrate_threshold(pos, neg, max_false_refusal=max_false_refusal)
+    fa, fr = gate_rates(pos, neg, threshold)
+    return AbstentionReport(
+        scores=scores,
+        answerable=answerable,
+        calibration=cal,
+        shipped_threshold=threshold,
+        shipped_false_answer_rate=fa,
+        shipped_false_refusal_rate=fr,
+        false_answers=[i for i, a in answerable.items() if not a and scores[i] >= threshold],
+        false_refusals=[i for i, a in answerable.items() if a and scores[i] < threshold],
+    )
+
+
+def abstention_markdown(rep: AbstentionReport) -> str:
+    c = rep.calibration
+    lines = [
+        "## Abstention gate (insufficient_evidence)",
+        "",
+        f"Evidence = best-hit BM25 / max possible BM25 for the query (hybrid+rewrite, top_k={ABSTAIN_TOP_K}).",
+        f"{c.n_answerable} answerable vs {c.n_unanswerable} unanswerable queries.",
+        "",
+        "| threshold | false-answer rate | false-refusal rate |",
+        "|---|---:|---:|",
+        f"| calibrated {c.threshold:.3f} (refusal budget {c.max_false_refusal:.0%}) | "
+        f"{c.false_answer_rate:.3f} | {c.false_refusal_rate:.3f} |",
+        f"| shipped {rep.shipped_threshold:.3f} | {rep.shipped_false_answer_rate:.3f} | "
+        f"{rep.shipped_false_refusal_rate:.3f} |",
+        "",
+        f"False answers (probe got through): {', '.join(rep.false_answers) or 'none'}",
+        f"False refusals (answerable refused): {', '.join(rep.false_refusals) or 'none'}",
+    ]
+    return "\n".join(lines)
+
+
+def check_abstention(rep: AbstentionReport, floors: Mapping | None = None) -> list[str]:
+    """Violations for ``floors["abstention"]`` (max false-answer / false-refusal rates)."""
+    floors = floors if floors is not None else load_floors()
+    limits = floors.get("abstention") or {}
+    out: list[str] = []
+    mfa = limits.get("max_false_answer_rate")
+    mfr = limits.get("max_false_refusal_rate")
+    if mfa is not None and rep.shipped_false_answer_rate > float(mfa) + 1e-9:
+        out.append(f"abstention false_answer_rate={rep.shipped_false_answer_rate:.3f} > {float(mfa):.3f}")
+    if mfr is not None and rep.shipped_false_refusal_rate > float(mfr) + 1e-9:
+        out.append(f"abstention false_refusal_rate={rep.shipped_false_refusal_rate:.3f} > {float(mfr):.3f}")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--qrels", default=str(DEFAULT_QRELS))
     parser.add_argument("--floors", default=str(DEFAULT_FLOORS))
     parser.add_argument("--json", action="store_true", help="print JSON instead of markdown")
     parser.add_argument("--check", action="store_true", help="exit 1 if any floor is violated")
+    parser.add_argument(
+        "--calibrate", action="store_true",
+        help="also calibrate the insufficient-evidence abstention threshold",
+    )
     args = parser.parse_args(argv)
 
-    report = evaluate(load_qrels(args.qrels))
-    violations = check_floors(report, load_floors(args.floors)) if args.check else []
+    qrels = load_qrels(args.qrels)
+    report = evaluate(qrels)
+    floors = load_floors(args.floors) if args.check else None
+    violations = check_floors(report, floors) if args.check else []
+    abst = abstention_eval(qrels) if (args.calibrate or args.check) else None
+    if abst is not None and args.check:
+        violations += check_abstention(abst, floors)
     if args.json:
         out = report.to_dict()
+        if abst is not None:
+            out["abstention"] = abst.to_dict()
         if args.check:
             out["floor_violations"] = violations
         print(json.dumps(out, indent=2))
     else:
         print(markdown_table(report))
+        if abst is not None:
+            print("\n" + abstention_markdown(abst))
         if args.check:
             print("\nfloors: " + ("OK" if not violations else "FAILED"))
             for v in violations:
