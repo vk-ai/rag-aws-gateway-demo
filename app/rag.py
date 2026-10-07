@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.abstain import (
+    ABSTAIN_MESSAGE,
+    STATUS_ANSWERED,
+    STATUS_INSUFFICIENT,
+    evidence_score,
+)
 from app.citations import Citation, build_citations, grounding_score
 from app.config import Settings, get_settings
 from app.providers.base import GenerationProvider, get_provider
@@ -19,6 +25,10 @@ class QueryResult:
     grounding_score: float
     rewritten_query: str = ""
     rewrite_ops: list[str] = field(default_factory=list)
+    status: str = STATUS_ANSWERED
+    abstained: bool = False
+    evidence_score: float = 0.0
+    evidence_threshold: float = 0.0
 
 
 class RagService:
@@ -32,7 +42,13 @@ class RagService:
         self.provider = provider
         self.settings = settings
 
-    def query(self, question: str, *, rewrite: bool | None = None) -> QueryResult:
+    def query(
+        self,
+        question: str,
+        *,
+        rewrite: bool | None = None,
+        abstain: bool | None = None,
+    ) -> QueryResult:
         do_rewrite = self.settings.rag_rewrite if rewrite is None else rewrite
         if do_rewrite:
             rw: RewriteResult = rewrite_query(question)
@@ -45,6 +61,27 @@ class RagService:
             ops = []
 
         hits = self.store.search(retrieve_q, top_k=self.settings.rag_top_k)
+        evidence = evidence_score(
+            self.store._bm25, retrieve_q, (h.bm25_score for h in hits)
+        )
+        threshold = float(self.settings.rag_min_evidence)
+        do_abstain = self.settings.rag_abstain if abstain is None else abstain
+        if do_abstain and evidence < threshold:
+            # Abstention gate: do not call the provider on weak evidence.
+            return QueryResult(
+                question=question,
+                answer=ABSTAIN_MESSAGE,
+                chunks=hits,
+                provider=self.settings.rag_provider,
+                citations=[],
+                grounding_score=0.0,
+                rewritten_query=rewritten,
+                rewrite_ops=ops,
+                status=STATUS_INSUFFICIENT,
+                abstained=True,
+                evidence_score=round(evidence, 4),
+                evidence_threshold=threshold,
+            )
         context = [h.chunk.text for h in hits]
         # Generate still sees the user's original question for answer framing
         answer = self.provider.generate(question, context)
@@ -60,6 +97,8 @@ class RagService:
             grounding_score=score,
             rewritten_query=rewritten,
             rewrite_ops=ops,
+            evidence_score=round(evidence, 4),
+            evidence_threshold=threshold,
         )
 
 

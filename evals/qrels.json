@@ -1,5 +1,5 @@
 {
-  "_about": "Hand-labelled synthetic qrels over evals/corpus/ (OSS/learning demo). relevant maps chunk_id -> graded relevance (2 = answers the question, 1 = partially relevant). Queries with no relevant chunks are unanswerable probes, reported but excluded from metric means.",
+  "_about": "Hand-labelled synthetic qrels over evals/corpus/ (OSS/learning demo). relevant maps chunk_id -> graded relevance (2 = answers the question, 1 = partially relevant). Queries with no relevant chunks are unanswerable probes, reported but excluded from metric means. They also calibrate the abstention gate (python -m evals.retrieval_eval --calibrate); 'near-miss' probes reuse corpus vocabulary but the corpus does not contain the answer.",
   "corpus_dir": "evals/corpus",
   "queries": [
     {
@@ -237,6 +237,72 @@
       "query": "What is the capital of Australia?",
       "relevant": {},
       "tags": ["unanswerable"]
+    },
+    {
+      "id": "probe_world_cup",
+      "query": "Who won the 2018 football world cup?",
+      "relevant": {},
+      "tags": ["unanswerable", "off-topic"]
+    },
+    {
+      "id": "probe_scifi",
+      "query": "Recommend a good sci-fi novel",
+      "relevant": {},
+      "tags": ["unanswerable", "off-topic"]
+    },
+    {
+      "id": "probe_ceo_colour",
+      "query": "What is the CEO's favourite colour?",
+      "relevant": {},
+      "tags": ["unanswerable", "off-topic"]
+    },
+    {
+      "id": "probe_router",
+      "query": "How do I reset my router password?",
+      "relevant": {},
+      "tags": ["unanswerable", "off-topic"]
+    },
+    {
+      "id": "probe_sourdough",
+      "query": "How do I bake sourdough bread?",
+      "relevant": {},
+      "tags": ["unanswerable", "off-topic"]
+    },
+    {
+      "id": "probe_mars",
+      "query": "What is the boiling point of water on Mars?",
+      "relevant": {},
+      "tags": ["unanswerable", "off-topic"]
+    },
+    {
+      "id": "probe_translate",
+      "query": "Translate hello into French",
+      "relevant": {},
+      "tags": ["unanswerable", "off-topic"]
+    },
+    {
+      "id": "probe_everest",
+      "query": "How tall is Mount Everest?",
+      "relevant": {},
+      "tags": ["unanswerable", "off-topic"]
+    },
+    {
+      "id": "probe_unknown_sku",
+      "query": "What is the price of SKU PX-9999-ZZ?",
+      "relevant": {},
+      "tags": ["unanswerable", "near-miss"]
+    },
+    {
+      "id": "probe_k8s_version",
+      "query": "Which Kubernetes version does the gateway run on?",
+      "relevant": {},
+      "tags": ["unanswerable", "near-miss"]
+    },
+    {
+      "id": "probe_drill_warranty",
+      "query": "What is the warranty period for the cordless drill?",
+      "relevant": {},
+      "tags": ["unanswerable", "near-miss"]
     }
   ]
 }

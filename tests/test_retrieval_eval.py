@@ -92,7 +92,8 @@ def test_ablation_covers_all_modes(report):
     for res in report.modes.values():
         for v in res.means.values():
             assert 0.0 <= v <= 1.0
-    assert report.probes == ["probe_unanswerable"]
+    assert report.probes[0] == "probe_unanswerable"
+    assert len(report.probes) >= 10  # unanswerable probes also calibrate the abstention gate
 
 
 def test_retrieval_floors_hold(report):

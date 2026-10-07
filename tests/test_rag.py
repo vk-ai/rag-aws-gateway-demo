@@ -147,9 +147,15 @@ def test_bedrock_live_true_without_boto3_falls_back(monkeypatch):
 def test_empty_store_still_answers():
     store = NumpyVectorStore()
     service = RagService(store=store, provider=MockProvider(), settings=Settings())
-    result = service.query("anything")
+    # With the abstention gate off, the provider still explains the empty store.
+    result = service.query("anything", abstain=False)
     assert "No relevant context" in result.answer
     assert result.chunks == []
+    # Default (gate on): an empty store is zero evidence -> abstain, no generation.
+    gated = service.query("anything")
+    assert gated.status == "insufficient_evidence"
+    assert gated.abstained is True
+    assert gated.chunks == []
 
 
 def test_rrf_fusion_prefers_shared_top_hits():
